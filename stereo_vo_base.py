@@ -149,6 +149,9 @@ class VisualOdometry:
         C = np.eye(3)
         r = np.array([0,0,0])
         # ------------- start your code here -------------- #
+        FinalErr = 9999999999
+        FinalC_ba = -1
+        Finalrba_a = -1
         for i in range(50):
             RansacFeatures = self.select_random_rows(features_coor, 3)
             f_r_prev, f_r_cur = RansacFeatures[:,2:4], RansacFeatures[:,6:8]
@@ -157,20 +160,16 @@ class VisualOdometry:
             prevCoor = self.threeD_calc(f_l_prev, f_r_prev)
             currCoor = self.threeD_calc(f_l_cur, f_r_cur)
             C_ba, r_ba_a = self.calc_transform(prevCoor, currCoor)
-            distances = np.sum(np.abs(np.transpose(currCoor) - np.add(np.matmul(C_ba,np.transpose(prevCoor)), r_ab_b.reshape((3,1)))), axis=0)
-
-            
-            
-            # distances = np.sum(np.abs(np.transpose(currCoor) - np.add(np.matmul(C_ba,np.transpose(p_prev)), r_ab_b.reshape((3,1)))), axis=0)
-            
-
-        
-        
-        
-        
-        
-        
-        
+            Err = 0
+            for j in range(3):
+                Err = Err + np.matmul((currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))).T, (currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))))
+            if Err < FinalErr :
+                FinalErr = Err
+                FinalC_ba = C_ba
+                Finalrba_a = r_ba_a
+                # if Err < 1.5 :
+                #     break
+        r = - 1 * np.dot(FinalC_ba, Finalrba_a)
         # replace (1) the dummy C and r to the estimated C and r. 
         #         (2) the original features to the filtered features
         return C, r, f_r_prev, f_r_cur
