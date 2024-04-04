@@ -119,8 +119,8 @@ class VisualOdometry:
         selected_rows = matrix[selected_indices, :]
         return selected_rows
     
-    def threeD_calc(self, fl,fr) :
-        Out = np.eye(3,3)
+    def threeD_calc(self, fl,fr, n) :
+        Out = np.eye(n,3)
         for i in range(len(fl)) :
             Ai =  np.dot((self.cam.baseline/(fl[i,0]-fr[i,0])) ,np.array(
             [
@@ -156,24 +156,62 @@ class VisualOdometry:
         FinalErr = 9999999999
         FinalC_ba = -1
         Finalrba_a = -1
-        for i in range(50):
-            RansacFeatures = self.select_random_rows(features_coor, 3)
-            f_r_prev, f_r_cur = RansacFeatures[:,2:4], RansacFeatures[:,6:8]
-            f_l_prev, f_l_cur = RansacFeatures[:, 0:2], RansacFeatures[:, 4:6]
 
-            prevCoor = self.threeD_calc(f_l_prev, f_r_prev)
-            currCoor = self.threeD_calc(f_l_cur, f_r_cur)
-            C_ba, r_ba_a = self.calc_transform(prevCoor, currCoor)
-            Err = 0
-            for j in range(3):
-                Err = Err + np.matmul((currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))).T, (currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))))
-            if Err < FinalErr :
-                FinalErr = Err
-                FinalC_ba = C_ba
-                Finalrba_a = r_ba_a
+        len_features = len(features_coor)
+
+        inliers = 0
+        prev_in = []
+        curr_in = []
+        fr_prev = []
+        fr_curr = []
+
+        for i in range(50):
+            # RansacFeatures = self.select_random_rows(features_coor, 3)
+            # f_r_prev, f_r_cur = RansacFeatures[:,2:4], RansacFeatures[:,6:8]
+            # f_l_prev, f_l_cur = RansacFeatures[:, 0:2], RansacFeatures[:, 4:6]
+
+            f_r_prev, f_r_cur = features_coor[:,2:4], features_coor[:,6:8]
+            f_l_prev, f_l_cur = features_coor[:, 0:2], features_coor[:, 4:6]
+            
+            prevCoor = self.threeD_calc(f_l_prev, f_r_prev, len_features)
+            currCoor = self.threeD_calc(f_l_cur, f_r_cur, len_features)
+            
+            C_ba, r_ba_a = self.calc_transform(prevCoor[:3,:], currCoor[:3,:])
+
+            inliers_temp= 0 
+            prev_in_temp= []
+            curr_in_temp= []
+            fr_prev_temp= []
+            fr_curr_temp= []
+            
+            for j in range(len_features):
+                Err = np.matmul((currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))).T, (currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))))
+                
+                if Err < 0.1:
+                    inliers += 1
+                    prev_in_temp.append(prevCoor[j, :])
+                    curr_in_temp.append(currCoor[j, :])
+                    fr_prev_temp.append(f_r_prev[j, :])
+                    fr_curr_temp.append(f_r_cur[j, :])
+
+            if inliers_temp > inliers:
+                inliers = inliers_temp
+                prev_in = prev_in_temp
+                curr_in = curr_in_temp
+                fr_prev = fr_prev_temp
+                fr_curr = fr_curr_temp
+            
+            # if Err < FinalErr :
+            #     FinalErr = Err
+            #     FinalC_ba = C_ba
+            #     Finalrba_a = r_ba_a
                 # if Err < 1.5 :
                 #     break
-        r = - 1 * np.dot(FinalC_ba, Finalrba_a)
+
+        C, rba_a = self.calc_transform(np.array(prev_in), np.array(curr_in))
+
+
+        r = - 1 * np.dot(C, rba_a)
         # replace (1) the dummy C and r to the estimated C and r. 
         #         (2) the original features to the filtered features
         return C, r, f_r_prev, f_r_cur
