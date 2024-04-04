@@ -120,13 +120,17 @@ class VisualOdometry:
         return selected_rows
     
     def threeD_calc(self, fl,fr) :
-        return (self.cam.baseline/(fl[:,0]-fr[:,0])) * np.array(
+        Out = np.eye(3,3)
+        for i in range(len(fl)) :
+            Ai =  np.dot((self.cam.baseline/(fl[i,0]-fr[i,0])) ,np.array(
             [
-                [0.5*(fl[:,0] + fr[:,0]) - self.cam.cu],
-                [(self.cam.fx/self.cam.fy)*(0.5*(fl[:,1] + fr[:,1])) - self.cam.cv],
-                [self.cam.fx] * fl.shape[0]
+                0.5*(fl[i,0] + fr[i,0]) - self.cam.cu,
+                (self.cam.fx/self.cam.fy)*(0.5*(fl[i,1] + fr[i,1])) - self.cam.cv,
+                self.cam.fx
             ]
-        ).T
+            ))
+            Out[i,:] = Ai
+        return Out
 
     def calc_transform(self, prevCoor, currCoor) :
         p_a = np.mean(prevCoor, axis=0)
