@@ -121,8 +121,9 @@ class VisualOdometry:
         return selected_rows
     
     def threeD_calc(self, fl,fr, n) :
-        Out = np.eye(n,3)
+        Out = np.eye(n,3) # Initialize the output array with dimensions n x 3
         for i in range(len(fl)) :
+        # Compute the 3D coordinate of the feature using triangulation formula
             Ai =  np.dot((self.cam.baseline/(fl[i,0]-fr[i,0])) ,np.array(
             [
                 0.5*(fl[i,0] + fr[i,0]) - self.cam.cu,
@@ -130,24 +131,32 @@ class VisualOdometry:
                 self.cam.fx
             ]
             ))
-            Out[i,:] = Ai
+            Out[i,:] = Ai # Store the computed 3D coordinate in the output array
         return Out
 
     def calc_transform(self, prevCoor, currCoor, n) :
+        # Calculate the mean of previous and current coordinates
         p_a = np.mean(prevCoor, axis=0)
         p_b = np.mean(currCoor, axis=0)
-        # w_ab = np.dot((currCoor - p_b), (prevCoor - p_a).T) / len(prevCoor)
+
+        # Compute the matrix W_ba
         sum_ba = 0
         for j in range(n):
             sum_ba += np.matmul((currCoor[j, :] - p_b).reshape(3,1), (prevCoor[j, :] - p_a).reshape(1,3))
         w_ba = sum_ba/n
+
+        # Perform Singular Value Decomposition (SVD) on W_ba
         V, _, UT = np.linalg.svd(w_ba)
 
+        # Calculate determinants of V and UT
         detV = np.linalg.det(V)
         detU = np.linalg.det(UT.T)
+        # Construct matrix A with the required determinant
         MatA = np.eye(3,3)
         MatA[2,2] = detU*detV
+        # Calculate the rotation matrix C_ba
         C_ba = np.matmul(np.matmul(V, MatA), UT)
+        # Calculate the translation vector r_ba_a
         r_ba_a = -np.matmul(C_ba.T, p_b) + p_a
 
         return C_ba, r_ba_a
@@ -158,35 +167,28 @@ class VisualOdometry:
         C = np.eye(3)
         r = np.array([0,0,0])
         # ------------- start your code here -------------- #
-        FinalErr = 9999999999
-        FinalC_ba = -1
-        Finalrba_a = -1
 
         len_features = len(features_coor)
 
         inliers = 0
         prev_in = []
         curr_in = []
-        fr_prev = []
-        fr_curr = []
 
         for i in range(50):
-            # RansacFeatures = self.select_random_rows(features_coor, 3)
-            # f_r_prev, f_r_cur = RansacFeatures[:,2:4], RansacFeatures[:,6:8]
-            # f_l_prev, f_l_cur = RansacFeatures[:, 0:2], RansacFeatures[:, 4:6]
-
+            # Extract features for previous and current frames
             f_r_prev, f_r_cur = features_coor[:,2:4], features_coor[:,6:8]
             f_l_prev, f_l_cur = features_coor[:, 0:2], features_coor[:, 4:6]
             
             prevCoor = self.threeD_calc(f_l_prev, f_r_prev, len_features)
             currCoor = self.threeD_calc(f_l_cur, f_r_cur, len_features)
-
-            random_indices = random.sample(range(len_features), 3)
+            
+            random_indices = np.random.choice(len_features, size=3, replace=False)
 
             # Select random rows from prevCoor and currCoor
             random_prevCoor = prevCoor[random_indices, :]
             random_currCoor = currCoor[random_indices, :]
             
+            #calculate transformation matrix
             C_ba, r_ba_a = self.calc_transform(random_prevCoor, random_currCoor, 3)
 
             inliers_temp= 0 
@@ -196,32 +198,24 @@ class VisualOdometry:
             fr_curr_temp= []
             
             for j in range(len_features):
+                # Calculate error for each feature
                 Err = np.matmul((currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))).T, (currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))))
                 
-                if Err < 0.1:
-                    inliers_temp+= 1
+                if Err < 0.1: # Threshold for inliers
                     prev_in_temp.append(prevCoor[j, :])
                     curr_in_temp.append(currCoor[j, :])
                     fr_prev_temp.append(f_r_prev[j, :])
                     fr_curr_temp.append(f_r_cur[j, :])
+                    inliers_temp+= 1
 
             if inliers_temp > inliers:
                 inliers = inliers_temp
                 prev_in = prev_in_temp
                 curr_in = curr_in_temp
-                fr_prev = fr_prev_temp
-                fr_curr = fr_curr_temp
-            
-            # if Err < FinalErr :
-            #     FinalErr = Err
-            #     FinalC_ba = C_ba
-            #     Finalrba_a = r_ba_a
-                # if Err < 1.5 :
-                #     break
-
+        # Calculate final transformation using inliers
         C, rba_a = self.calc_transform(np.array(prev_in), np.array(curr_in), inliers)
 
-
+        # Calculate translation vector
         r = - 1 * np.dot(C, rba_a)
         # replace (1) the dummy C and r to the estimated C and r. 
         #         (2) the original features to the filtered features
