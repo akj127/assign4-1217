@@ -8,6 +8,7 @@ https://carre.utoronto.ca/aer1217
 import numpy as np
 import cv2 as cv
 import sys
+import random
 
 STAGE_FIRST_FRAME = 0
 STAGE_SECOND_FRAME = 1
@@ -132,11 +133,15 @@ class VisualOdometry:
             Out[i,:] = Ai
         return Out
 
-    def calc_transform(self, prevCoor, currCoor) :
+    def calc_transform(self, prevCoor, currCoor, n) :
         p_a = np.mean(prevCoor, axis=0)
         p_b = np.mean(currCoor, axis=0)
-        w_ab = np.dot((currCoor - p_b), (prevCoor - p_a).T) / len(prevCoor)
-        V, _, UT = np.linalg.svd(w_ab)
+        # w_ab = np.dot((currCoor - p_b), (prevCoor - p_a).T) / len(prevCoor)
+        sum_ba = 0
+        for j in range(n):
+            sum_ba += np.matmul((currCoor[j, :] - p_b).reshape(3,1), (prevCoor[j, :] - p_a).reshape(1,3))
+        w_ba = sum_ba/n
+        V, _, UT = np.linalg.svd(w_ba)
 
         detV = np.linalg.det(V)
         detU = np.linalg.det(UT.T)
@@ -175,8 +180,14 @@ class VisualOdometry:
             
             prevCoor = self.threeD_calc(f_l_prev, f_r_prev, len_features)
             currCoor = self.threeD_calc(f_l_cur, f_r_cur, len_features)
+
+            random_indices = random.sample(range(len_features), 3)
+
+            # Select random rows from prevCoor and currCoor
+            random_prevCoor = prevCoor[random_indices, :]
+            random_currCoor = currCoor[random_indices, :]
             
-            C_ba, r_ba_a = self.calc_transform(prevCoor[:3,:], currCoor[:3,:])
+            C_ba, r_ba_a = self.calc_transform(random_prevCoor, random_currCoor, 3)
 
             inliers_temp= 0 
             prev_in_temp= []
@@ -188,7 +199,7 @@ class VisualOdometry:
                 Err = np.matmul((currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))).T, (currCoor[j, :] - (C_ba @ (prevCoor[j, :] - r_ba_a))))
                 
                 if Err < 0.1:
-                    inliers += 1
+                    inliers_temp+= 1
                     prev_in_temp.append(prevCoor[j, :])
                     curr_in_temp.append(currCoor[j, :])
                     fr_prev_temp.append(f_r_prev[j, :])
@@ -208,7 +219,7 @@ class VisualOdometry:
                 # if Err < 1.5 :
                 #     break
 
-        C, rba_a = self.calc_transform(np.array(prev_in), np.array(curr_in))
+        C, rba_a = self.calc_transform(np.array(prev_in), np.array(curr_in), inliers)
 
 
         r = - 1 * np.dot(C, rba_a)
